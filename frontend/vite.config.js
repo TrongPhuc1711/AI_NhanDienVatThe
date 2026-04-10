@@ -9,7 +9,7 @@ export default defineConfig({
       // Proxy tất cả API calls đến FastAPI backend
       '/detect':  'http://localhost:8000',
       '/classes': 'http://localhost:8000',
-      '/':        { target: 'http://localhost:8000', bypass: (req) => req.url !== '/' ? req.url : undefined },
+      
     }
   }
 })

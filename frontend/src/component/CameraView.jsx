@@ -51,7 +51,7 @@ export default function CameraView({ videoRef, canvasRef, isRunning, phoneAlert 
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
-        style={{ transform: 'scaleX(-1)' }}  /* Lật theo video */
+        
       />
 
       {/* Placeholder khi chưa bật camera */}
