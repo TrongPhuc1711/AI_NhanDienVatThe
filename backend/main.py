@@ -3,10 +3,10 @@
 Backend sử dụng FastAPI + Ultralytics YOLOv8 + OpenCV
 """
 
+
 import base64
 import time
 from collections import Counter
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from ultralytics import YOLO
+
 
 # ========================
 # Khởi tạo ứng dụng
@@ -24,7 +25,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS: cho phép React frontend kết nối từ localhost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -37,11 +37,9 @@ app.add_middleware(
 # Load YOLOv8 Model
 # ========================
 print("🚀 Đang tải model YOLOv8n...")
-model = YOLO("yolov8n.pt")   # Tự động tải nếu chưa có (~6MB)
+model = YOLO("yolov8n.pt")
 print("✅ Model sẵn sàng!")
 
-# ── Class quan tâm (COCO dataset IDs) ──────────────
-# Xem đầy đủ: https://docs.ultralytics.com/datasets/detect/coco/
 CLASSES_OF_INTEREST = {
     0:  "person",
     67: "cell phone",
@@ -55,7 +53,6 @@ CLASSES_OF_INTEREST = {
     76: "scissors",
 }
 
-# Màu HEX cho từng class (hiển thị bounding box trên frontend)
 CLASS_COLORS = {
     "person":       "#00FF88",
     "cell phone":   "#FF4444",
@@ -74,39 +71,34 @@ CLASS_COLORS = {
 # Pydantic Schemas
 # ========================
 class FrameRequest(BaseModel):
-    """Dữ liệu nhận từ React frontend"""
-    image:      str              # base64 JPEG string
+    image:      str
     confidence: float = Field(default=0.4, ge=0.1, le=0.9)
 
 class BBox(BaseModel):
-    """Tọa độ bounding box, chuẩn hóa 0..1"""
     x:      float
     y:      float
     width:  float
     height: float
 
 class Detection(BaseModel):
-    """Kết quả detect 1 object"""
     label:      str
     confidence: float
     bbox:       BBox
     color:      str
 
 class DetectionResponse(BaseModel):
-    """Response trả về frontend"""
     detections:         list[Detection]
-    counts:             dict       # {"person": 2, "cell phone": 1}
+    counts:             dict
     total:              int
     processing_time_ms: float
-    phone_alert:        bool       # True khi phát hiện điện thoại
-    person_count:       int        # Tiện truy cập nhanh
+    phone_alert:        bool
+    person_count:       int
 
 
 # ========================
 # Utility Functions
 # ========================
 def decode_image(base64_str: str) -> np.ndarray:
-    """Giải mã base64 → numpy array (OpenCV BGR format)"""
     if "," in base64_str:
         base64_str = base64_str.split(",")[1]
     img_bytes = base64.b64decode(base64_str)
@@ -118,7 +110,6 @@ def decode_image(base64_str: str) -> np.ndarray:
 
 
 def resize_for_speed(img: np.ndarray, max_width: int = 640) -> np.ndarray:
-    """Resize ảnh để tăng tốc inference (giữ tỷ lệ)"""
     h, w = img.shape[:2]
     if w > max_width:
         scale = max_width / w
@@ -127,30 +118,18 @@ def resize_for_speed(img: np.ndarray, max_width: int = 640) -> np.ndarray:
 
 
 def run_yolo(img: np.ndarray, conf_threshold: float) -> list[Detection]:
-    """
-    Chạy YOLOv8 inference và trả danh sách Detection
-    
-    Args:
-        img: Ảnh numpy BGR
-        conf_threshold: Ngưỡng confidence (0.1 ~ 0.9)
-    """
     h, w = img.shape[:2]
-
-    # verbose=False để tắt log trên terminal
     results = model(img, conf=conf_threshold, verbose=False)[0]
 
     detections = []
     for box in results.boxes:
         cls_id = int(box.cls[0])
-
-        # Bỏ qua class không quan tâm
         if cls_id not in CLASSES_OF_INTEREST:
             continue
 
         label      = CLASSES_OF_INTEREST[cls_id]
         confidence = float(box.conf[0])
 
-        # Tọa độ pixel → chuẩn hóa 0..1
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         bbox = BBox(
             x      = x1 / w,
@@ -174,7 +153,6 @@ def run_yolo(img: np.ndarray, conf_threshold: float) -> list[Detection]:
 # ========================
 @app.get("/", tags=["Health"])
 def health_check():
-    """Kiểm tra server đang hoạt động"""
     return {
         "status":  "ok",
         "message": "YOLOv8 API đang chạy 🚀",
@@ -186,24 +164,16 @@ def health_check():
 @app.post("/detect", response_model=DetectionResponse, tags=["Detection"])
 async def detect(request: FrameRequest):
     """
-    **Endpoint chính** — Nhận frame ảnh từ webcam, chạy YOLOv8, trả kết quả JSON.
-
-    - **image**: Chuỗi base64 của ảnh JPEG (có thể có/không có header data:image/...)
-    - **confidence**: Ngưỡng tin cậy tối thiểu (mặc định: 0.4 = 40%)
+    Nhận frame ảnh từ webcam, chạy YOLOv8, trả kết quả JSON.
+    - **image**: Chuỗi base64 của ảnh JPEG
+    - **confidence**: Ngưỡng tin cậy (mặc định: 0.4)
     """
     t0 = time.perf_counter()
 
     try:
-        # 1. Decode ảnh
-        img = decode_image(request.image)
-
-        # 2. Resize nhỏ lại để xử lý nhanh hơn
-        img = resize_for_speed(img, max_width=640)
-
-        # 3. Chạy YOLO
-        detections = run_yolo(img, request.confidence)
-
-        # 4. Tổng hợp thống kê
+        img          = decode_image(request.image)
+        img          = resize_for_speed(img, max_width=640)
+        detections   = run_yolo(img, request.confidence)
         counts       = dict(Counter(d.label for d in detections))
         phone_alert  = "cell phone" in counts
         person_count = counts.get("person", 0)
@@ -226,14 +196,12 @@ async def detect(request: FrameRequest):
 
 @app.get("/classes", tags=["Info"])
 def get_classes():
-    """Trả về danh sách class và màu tương ứng"""
     return {
         "classes": CLASSES_OF_INTEREST,
         "colors":  CLASS_COLORS,
     }
 
 
-# ── Chạy trực tiếp bằng: python main.py ────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
