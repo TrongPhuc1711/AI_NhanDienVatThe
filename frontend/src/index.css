@@ -1,89 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ===========================
-   Global Styles
+   SmartClass Monitor Theme
 =========================== */
+
 :root {
-  --bg-primary:    #050A14;
-  --bg-secondary:  #0A1628;
-  --bg-card:       #0D1F3C;
-  --accent-green:  #00FF88;
-  --accent-blue:   #4488FF;
-  --accent-red:    #FF4444;
-  --text-primary:  #E8F4FF;
-  --text-muted:    #4A7FA5;
-  --border:        #1A3A5C;
+  --bg-primary:    #030c1a;
+  --bg-secondary:  #04101f;
+  --bg-card:       #071428;
+  --accent-green:  #10b981;
+  --accent-blue:   #4a9eff;
+  --accent-red:    #ef4444;
+  --accent-amber:  #f59e0b;
+  --text-primary:  #c8dff0;
+  --text-muted:    #3d7ab5;
+  --border:        #1e3a5f;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Outfit', sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* Scrollbar tùy chỉnh */
-::-webkit-scrollbar { width: 6px; }
+/* Subtle dot grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(74,158,255,0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root { position: relative; z-index: 1; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-::-webkit-scrollbar-thumb {
-  background: var(--accent-blue);
-  border-radius: 3px;
-}
+::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2a5a80; }
 
-/* Grid background pattern */
-.grid-bg {
-  background-image:
-    linear-gradient(rgba(68, 136, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(68, 136, 255, 0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-/* Scan line hiệu ứng */
+/* Scan line */
 .scan-overlay::after {
   content: '';
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 255, 136, 0.015) 2px,
-    rgba(0, 255, 136, 0.015) 4px
+    0deg, transparent, transparent 2px,
+    rgba(74,158,255,0.012) 2px, rgba(74,158,255,0.012) 4px
   );
   pointer-events: none;
   border-radius: inherit;
 }
 
-/* Glow effect */
-.glow-green { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
-.glow-blue  { box-shadow: 0 0 20px rgba(68, 136, 255, 0.3); }
-.glow-red   { box-shadow: 0 0 30px rgba(255, 68, 68, 0.5);  }
+/* Glows */
+.glow-green { box-shadow: 0 0 24px rgba(16,185,129,0.25), 0 0 48px rgba(16,185,129,0.08); }
+.glow-blue  { box-shadow: 0 0 24px rgba(74,158,255,0.25); }
 
-/* Phone alert animation */
+/* Phone alert */
 @keyframes alertPulse {
-  0%, 100% { box-shadow: 0 0 10px rgba(255,68,68,0.3); }
-  50%       { box-shadow: 0 0 40px rgba(255,68,68,0.8), 0 0 80px rgba(255,68,68,0.3); }
+  0%,100% { box-shadow: 0 0 12px rgba(245,158,11,0.3); }
+  50%     { box-shadow: 0 0 40px rgba(245,158,11,0.7), 0 0 80px rgba(245,158,11,0.2); }
 }
-.phone-alert { animation: alertPulse 0.8s ease-in-out infinite; }
+.phone-alert { animation: alertPulse 1s ease-in-out infinite; border-color: #f59e0b !important; }
 
-/* Corner brackets cho camera view */
+/* Corner brackets */
 .corner-bracket {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 18px; height: 18px;
   border-color: var(--accent-green);
   border-style: solid;
+  opacity: 0.8;
 }
-.corner-bracket.tl { top: 8px; left: 8px;  border-width: 2px 0 0 2px; }
-.corner-bracket.tr { top: 8px; right: 8px; border-width: 2px 2px 0 0; }
+.corner-bracket.tl { top: 8px;    left: 8px;  border-width: 2px 0 0 2px; }
+.corner-bracket.tr { top: 8px;    right: 8px; border-width: 2px 2px 0 0; }
 .corner-bracket.bl { bottom: 8px; left: 8px;  border-width: 0 0 2px 2px; }
 .corner-bracket.br { bottom: 8px; right: 8px; border-width: 0 2px 2px 0; }
+
+/* Grid background (kept for HistoryChart area) */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(74,158,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74,158,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}

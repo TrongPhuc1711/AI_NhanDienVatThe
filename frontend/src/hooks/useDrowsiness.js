@@ -1,75 +1,69 @@
 /**
- * useDrowsiness — Hook quản lý logic phát hiện buồn ngủ
- *
- * Logic cảnh báo có độ trễ:
- * - Mắt nhắm liên tục > EYES_CLOSED_SECS giây → cảnh báo
- * - Đầu gật liên tục > HEAD_NOD_SECS giây → cảnh báo
+ * useDrowsiness — Hook phát hiện buồn ngủ (tối ưu, không lag)
  */
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useReducer } from 'react'
 
-const API_BASE = 'http://localhost:8000'
-
-// Thời gian (giây) trước khi kích hoạt cảnh báo
+const API_BASE         = 'http://localhost:8000'
 const EYES_CLOSED_SECS = 2.0
 const HEAD_NOD_SECS    = 1.5
+const UI_UPDATE_MS     = 160   // Throttle React re-renders ~6Hz
+
+const INIT_DROWSY = {
+    face_detected: false,
+    left_ear: 0, right_ear: 0, avg_ear: 0,
+    eyes_closed: false,
+    head_pitch: 0, head_nodding: false,
+    drowsy: false, drowsy_level: 0,
+    left_eye_pts: [], right_eye_pts: [],
+    nose_pt: null, chin_pt: null,
+    processing_time_ms: 0,
+}
+
+const INIT_STATE = {
+    isConnected: false,
+    drowsyData:  INIT_DROWSY,
+    eyesAlert:   false,
+    headAlert:   false,
+    drowsyAlert: false,
+}
+
+function reducer(state, action) {
+    switch (action.type) {
+        case 'UPDATE': return { ...state, ...action.payload }
+        case 'RESET':  return { ...INIT_STATE, isConnected: state.isConnected }
+        default:       return state
+    }
+}
 
 export function useDrowsiness() {
-    // ── Camera & App state ──────────────────────────
-    const [isRunning, setIsRunning]     = useState(false)
-    const [isConnected, setIsConnected] = useState(false)
-    const [error, setError]             = useState(null)
-    const [fps, setFps]                 = useState(0)
+    const [isRunning, setIsRunning] = useState(false)
+    const [fps,       setFps      ] = useState(0)
+    const [error,     setError    ] = useState(null)
+    const [uiState,   dispatch    ] = useReducer(reducer, INIT_STATE)
 
-    // ── Drowsiness state ────────────────────────────
-    const [drowsyData, setDrowsyData] = useState({
-        face_detected: false,
-        left_ear:      0,
-        right_ear:     0,
-        avg_ear:       0,
-        eyes_closed:   false,
-        head_pitch:    0,
-        head_nodding:  false,
-        drowsy:        false,
-        drowsy_level:  0,
-        left_eye_pts:  [],
-        right_eye_pts: [],
-        nose_pt:       null,
-        chin_pt:       null,
-        processing_time_ms: 0,
-    })
+    const videoRef         = useRef(null)
+    const canvasRef        = useRef(null)
+    const streamRef        = useRef(null)
+    const intervalRef      = useRef(null)
+    const fpsCountRef      = useRef(0)
+    const fpsTimerRef      = useRef(null)
+    const offscreenRef     = useRef(document.createElement('canvas'))
+    const eyesClosedSince  = useRef(null)
+    const headNoddingSince = useRef(null)
+    const lastUiUpdateRef  = useRef(0)
+    const targetFpsRef     = useRef(6)
 
-    // Cảnh báo có độ trễ (không cảnh báo ngay khi chớp mắt)
-    const [eyesAlert, setEyesAlert]   = useState(false)  // Mắt nhắm lâu
-    const [headAlert, setHeadAlert]   = useState(false)  // Đầu gật lâu
-    const [drowsyAlert, setDrowsyAlert] = useState(false) // Tổng hợp
-
-    // ── Refs ────────────────────────────────────────
-    const videoRef          = useRef(null)
-    const canvasRef         = useRef(null)
-    const streamRef         = useRef(null)
-    const intervalRef       = useRef(null)
-    const fpsCountRef       = useRef(0)
-    const fpsTimerRef       = useRef(null)
-    const offscreenRef      = useRef(document.createElement('canvas'))
-
-    // Timers theo dõi thời gian mắt nhắm / đầu cúi liên tục
-    const eyesClosedSince   = useRef(null)
-    const headNoddingSince  = useRef(null)
-
-    const targetFpsRef = useRef(6)  // 6 FPS là đủ cho drowsiness
-
-    // ── Kết nối backend ─────────────────────────────
+    // Kết nối backend
     useEffect(() => {
         const check = () =>
             fetch(`${API_BASE}/`)
-                .then(r => setIsConnected(r.ok))
-                .catch(() => setIsConnected(false))
+                .then(r => dispatch({ type: 'UPDATE', payload: { isConnected: r.ok } }))
+                .catch(() => dispatch({ type: 'UPDATE', payload: { isConnected: false } }))
         check()
         const t = setInterval(check, 5000)
         return () => clearInterval(t)
     }, [])
 
-    // ── Bắt đầu camera ──────────────────────────────
     const startCamera = useCallback(async () => {
         try {
             setError(null)
@@ -88,7 +82,6 @@ export function useDrowsiness() {
         }
     }, [])
 
-    // ── Gửi frame lên backend ───────────────────────
     const sendFrame = useCallback(async () => {
         const video  = videoRef.current
         const canvas = canvasRef.current
@@ -100,7 +93,6 @@ export function useDrowsiness() {
             temp.height = video.videoHeight
         }
         const ctx = temp.getContext('2d', { willReadFrequently: true })
-        // Lật ngang vì video bị mirror
         ctx.save()
         ctx.translate(temp.width, 0)
         ctx.scale(-1, 1)
@@ -118,45 +110,47 @@ export function useDrowsiness() {
             if (!res.ok) throw new Error(res.status)
             const data = await res.json()
 
-            setDrowsyData(data)
-            setIsConnected(true)
+            // ✅ Vẽ overlay ngay, không chờ React
+            drawDrowsinessOverlay(canvas, data)
             fpsCountRef.current += 1
 
-            // ── Logic cảnh báo có độ trễ ──
+            // ✅ Tính alert timers (dùng ref, không trigger render)
             const now = Date.now()
-
-            // Mắt nhắm
             if (data.eyes_closed) {
                 if (!eyesClosedSince.current) eyesClosedSince.current = now
-                const elapsed = (now - eyesClosedSince.current) / 1000
-                setEyesAlert(elapsed >= EYES_CLOSED_SECS)
             } else {
                 eyesClosedSince.current = null
-                setEyesAlert(false)
             }
-
-            // Đầu gật
             if (data.head_nodding) {
                 if (!headNoddingSince.current) headNoddingSince.current = now
-                const elapsed = (now - headNoddingSince.current) / 1000
-                setHeadAlert(elapsed >= HEAD_NOD_SECS)
             } else {
                 headNoddingSince.current = null
-                setHeadAlert(false)
             }
 
-            // Tổng hợp
-            setDrowsyAlert(data.drowsy_level >= 1)
+            // ✅ Throttle: chỉ update React khi đủ thời gian
+            if (now - lastUiUpdateRef.current >= UI_UPDATE_MS) {
+                lastUiUpdateRef.current = now
+                const eyesElapsed = eyesClosedSince.current
+                    ? (now - eyesClosedSince.current) / 1000 : 0
+                const headElapsed = headNoddingSince.current
+                    ? (now - headNoddingSince.current) / 1000 : 0
 
-            // Vẽ overlay
-            drawDrowsinessOverlay(canvas, data)
-
+                dispatch({
+                    type: 'UPDATE',
+                    payload: {
+                        drowsyData:  data,
+                        isConnected: true,
+                        eyesAlert:   eyesElapsed  >= EYES_CLOSED_SECS,
+                        headAlert:   headElapsed  >= HEAD_NOD_SECS,
+                        drowsyAlert: data.drowsy_level >= 1,
+                    },
+                })
+            }
         } catch {
-            setIsConnected(false)
+            dispatch({ type: 'UPDATE', payload: { isConnected: false } })
         }
     }, [])
 
-    // ── Vòng lặp detection ──────────────────────────
     useEffect(() => {
         if (!isRunning) return
         let cancelled = false
@@ -164,9 +158,8 @@ export function useDrowsiness() {
         const loop = async () => {
             if (cancelled) return
             await sendFrame()
-            if (!cancelled) {
+            if (!cancelled)
                 intervalRef.current = setTimeout(loop, Math.round(1000 / targetFpsRef.current))
-            }
         }
 
         loop()
@@ -182,22 +175,18 @@ export function useDrowsiness() {
         }
     }, [isRunning, sendFrame])
 
-    // ── Dừng camera ─────────────────────────────────
     const stopCamera = useCallback(() => {
         streamRef.current?.getTracks().forEach(t => t.stop())
         streamRef.current = null
         setIsRunning(false)
-        setDrowsyAlert(false)
-        setEyesAlert(false)
-        setHeadAlert(false)
+        setFps(0)
         eyesClosedSince.current  = null
         headNoddingSince.current = null
-        setFps(0)
+        dispatch({ type: 'RESET' })
         const canvas = canvasRef.current
         if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
     }, [])
 
-    // ── Cleanup ─────────────────────────────────────
     useEffect(() => () => {
         streamRef.current?.getTracks().forEach(t => t.stop())
         clearTimeout(intervalRef.current)
@@ -206,53 +195,52 @@ export function useDrowsiness() {
 
     return {
         videoRef, canvasRef,
-        isRunning, isConnected, error, fps,
-        drowsyData,
-        eyesAlert, headAlert, drowsyAlert,
+        isRunning, fps, error,
+        isConnected: uiState.isConnected,
+        drowsyData:  uiState.drowsyData,
+        eyesAlert:   uiState.eyesAlert,
+        headAlert:   uiState.headAlert,
+        drowsyAlert: uiState.drowsyAlert,
         startCamera, stopCamera,
     }
 }
 
-// ═══════════════════════════════════════════════════
-// Vẽ overlay: eye contours + EAR bar + status
-// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// Canvas overlay — tách hoàn toàn khỏi React
+// ═══════════════════════════════════════════════
 function drawDrowsinessOverlay(canvas, data) {
     const ctx = canvas.getContext('2d')
-    const W = canvas.width
-    const H = canvas.height
+    const W   = canvas.width
+    const H   = canvas.height
     ctx.clearRect(0, 0, W, H)
 
     if (!data.face_detected) return
 
-    const level    = data.drowsy_level
-    const eyeColor = data.eyes_closed  ? '#FF4444' : '#00FF88'
-    const headColor= data.head_nodding ? '#FF8800' : '#00FF88'
+    const level     = data.drowsy_level
+    const eyeColor  = data.eyes_closed   ? '#FF4444' : '#10b981'
+    const headColor = data.head_nodding  ? '#f59e0b' : '#10b981'
 
-    // ── Vẽ eye contours ──
+    // Eye contours
     const drawEye = (pts, color) => {
         if (!pts || pts.length < 6) return
         ctx.beginPath()
-        // Lật X vì video bị mirror
         ctx.moveTo((1 - pts[0].x) * W, pts[0].y * H)
-        for (let i = 1; i < pts.length; i++) {
+        for (let i = 1; i < pts.length; i++)
             ctx.lineTo((1 - pts[i].x) * W, pts[i].y * H)
-        }
         ctx.closePath()
         ctx.strokeStyle = color
         ctx.lineWidth   = 2
         ctx.shadowColor = color
         ctx.shadowBlur  = 8
         ctx.stroke()
-        // Fill bán trong suốt
         ctx.fillStyle = color + '30'
         ctx.fill()
         ctx.shadowBlur = 0
     }
-
     drawEye(data.left_eye_pts,  eyeColor)
     drawEye(data.right_eye_pts, eyeColor)
 
-    // ── Đường nối nose → chin (head tilt) ──
+    // Nose → chin line
     if (data.nose_pt && data.chin_pt) {
         const nx = (1 - data.nose_pt.x) * W
         const ny = data.nose_pt.y * H
@@ -266,49 +254,40 @@ function drawDrowsinessOverlay(canvas, data) {
         ctx.setLineDash([4, 4])
         ctx.stroke()
         ctx.setLineDash([])
-
-        // Dot ở nose
         ctx.beginPath()
         ctx.arc(nx, ny, 4, 0, Math.PI * 2)
         ctx.fillStyle = headColor
         ctx.fill()
     }
 
-    // ── EAR Gauge (top-right) ──
-    const gaugeX = W - 130
-    const gaugeY = 16
-    const gaugeW = 110
-    const gaugeH = 14
-    const earPct = Math.min(data.avg_ear / 0.4, 1)   // 0.4 = mắt mở hoàn toàn
+    // EAR Gauge (top-right)
+    const gX   = W - 130, gY = 16, gW = 110, gH = 14
+    const pct  = Math.min(data.avg_ear / 0.4, 1)
+    const bClr = pct < 0.55 ? '#ef4444' : pct < 0.75 ? '#f59e0b' : '#10b981'
 
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'
-    ctx.fillRect(gaugeX - 8, gaugeY - 14, gaugeW + 16, gaugeH + 28)
+    ctx.fillStyle = 'rgba(0,0,0,0.60)'
+    ctx.fillRect(gX - 8, gY - 14, gW + 16, gH + 28)
+    ctx.fillStyle = '#0d2544'
+    ctx.fillRect(gX, gY, gW, gH)
+    ctx.fillStyle = bClr
+    ctx.fillRect(gX, gY, gW * pct, gH)
 
-    ctx.fillStyle = '#1A3A5C'
-    ctx.fillRect(gaugeX, gaugeY, gaugeW, gaugeH)
+    ctx.fillStyle = '#c8dff0'
+    ctx.font      = 'bold 10px "DM Mono", monospace'
+    ctx.fillText(`EAR: ${data.avg_ear.toFixed(2)}`, gX, gY - 2)
+    ctx.fillText(`Pitch: ${data.head_pitch.toFixed(1)}°`, gX, gY + gH + 12)
 
-    const barColor = earPct < 0.55 ? '#FF4444' : earPct < 0.75 ? '#FFD700' : '#00FF88'
-    ctx.fillStyle = barColor
-    ctx.fillRect(gaugeX, gaugeY, gaugeW * earPct, gaugeH)
-
-    ctx.fillStyle = '#E8F4FF'
-    ctx.font = 'bold 10px "JetBrains Mono", monospace'
-    ctx.fillText(`EAR: ${data.avg_ear.toFixed(2)}`, gaugeX, gaugeY - 2)
-    ctx.fillText(`Pitch: ${data.head_pitch.toFixed(1)}°`, gaugeX, gaugeY + gaugeH + 12)
-
-    // ── Drowsy Level Badge ──
+    // Drowsy badge
     if (level > 0) {
-        const badgeColors = ['', '#FF8800', '#FF2200']
-        const badgeText   = ['', '⚠ BUỒN NGỦ', '🚨 NGUY HIỂM!']
-
-        ctx.fillStyle = badgeColors[level] + 'CC'
+        const colors = ['', '#f59e0b', '#ef4444']
+        const labels = ['', '⚠ BUỒN NGỦ', '🚨 NGUY HIỂM!']
+        ctx.fillStyle   = colors[level] + 'CC'
         const bW = 180, bH = 34, bX = (W - bW) / 2, bY = H - bH - 10
         ctx.fillRect(bX, bY, bW, bH)
-
-        ctx.fillStyle = '#FFFFFF'
-        ctx.font = 'bold 15px "Space Grotesk", sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText(badgeText[level], W / 2, bY + 22)
-        ctx.textAlign = 'left'
+        ctx.fillStyle   = '#fff'
+        ctx.font        = 'bold 15px "Outfit", sans-serif'
+        ctx.textAlign   = 'center'
+        ctx.fillText(labels[level], W / 2, bY + 22)
+        ctx.textAlign   = 'left'
     }
 }
