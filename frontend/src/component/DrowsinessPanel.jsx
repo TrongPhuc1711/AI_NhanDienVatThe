@@ -101,7 +101,7 @@ export default function DrowsinessPanel({
             {/* Head Pose */}
             <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
                 <p className="text-xs font-mono font-bold mb-3" style={{ color: 'var(--text-muted)' }}>
-                    🎯 HEAD POSE (GÓC NGHIÊNG)
+                    HEAD POSE (GÓC NGHIÊNG)
                 </p>
 
                 {/* Pitch bar */}

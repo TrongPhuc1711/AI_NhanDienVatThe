@@ -232,11 +232,11 @@ export default function App() {
                         <div className="text-xs font-mono" style={{color:'#2a5a80'}}>NGÀY</div>
                         <div className="text-xs font-mono" style={{color:'#c8dff0'}}>{dateStr}</div>
                     </div>
-                    <div className="w-px h-8" style={{background:'#0d2544'}} />
+                    {/* <div className="w-px h-8" style={{background:'#0d2544'}} />
                     <div className="text-center">
                         <div className="text-xs font-mono" style={{color:'#2a5a80'}}>MODEL</div>
                         <div className="text-xs font-mono" style={{color:'#c8dff0'}}>YOLOv8n · MediaPipe</div>
-                    </div>
+                    </div> */}
                 </div>
 
                 {/* Mode switcher */}
@@ -265,11 +265,11 @@ export default function App() {
             </div>
 
             {/* ══ FOOTER ══ */}
-            <footer className="shrink-0 border-t px-5 py-2 flex items-center justify-between text-xs font-mono"
+            {/* <footer className="shrink-0 border-t px-5 py-2 flex items-center justify-between text-xs font-mono"
                 style={{borderColor:'#0d2544', color:'#1e3a5f', background:'#04101f'}}>
                 <span>YOLOv8n · MediaPipe Face Mesh · FastAPI · React + Vite</span>
                 <span style={{color:'#2a5a80'}}>SmartClass Monitor v2.0</span>
-            </footer>
+            </footer> */}
         </div>
     )
 }

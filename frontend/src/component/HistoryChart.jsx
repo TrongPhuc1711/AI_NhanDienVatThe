@@ -1,7 +1,4 @@
-/**
- * HistoryChart — Biểu đồ số lượng object theo thời gian
- * Vẽ bằng SVG thuần, không cần thư viện ngoài
- */
+
 import React, { useEffect, useRef } from 'react'
 
 const MAX_POINTS   = 40          // Số điểm dữ liệu hiển thị
@@ -9,7 +6,6 @@ const CHART_H      = 80          // Chiều cao vùng vẽ (px)
 const CLASS_COLORS = {
   person:      '#00FF88',
   'cell phone':'#FF4444',
-  laptop:      '#4488FF',
 }
 
 export default function HistoryChart({ counts }) {

@@ -46,9 +46,6 @@ export function useDetection() {
     useEffect(() => { targetFpsRef.current = targetFps  }, [targetFps])
     useEffect(() => { confidenceRef.current = confidence }, [confidence])
 
-    // ── Throttle UI updates ────────────────────────────────────
-    // Canvas vẽ mỗi frame, nhưng React state chỉ update tối đa 6 lần/giây
-    // → Xóa hiện tượng component "giật" do re-render quá nhiều
     const lastUiUpdateRef = useRef(0)
     const UI_UPDATE_MS    = 160  // ~6Hz cho UI, đủ mượt mà không lag
 

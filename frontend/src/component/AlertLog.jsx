@@ -1,6 +1,3 @@
-/**
- * AlertLog — Nhật ký vi phạm điện thoại trong lớp học
- */
 import React, { useState, useEffect, useRef } from 'react'
 import { Trash2, ShieldAlert } from 'lucide-react'
 
@@ -91,7 +88,7 @@ export default function AlertLog({ phoneAlert }) {
       <div className="max-h-28 overflow-y-auto">
         {logs.length === 0 ? (
           <div className="flex flex-col items-center py-5 gap-2">
-            <div className="text-2xl opacity-30">✅</div>
+            
             <p className="text-xs font-mono" style={{color:'#2a5a80'}}>
               Chưa phát hiện vi phạm
             </p>

@@ -1,6 +1,3 @@
-/**
- * ControlBar — Thanh điều khiển: FPS selector, confidence threshold
- */
 import React from 'react'
 import { Settings, Gauge } from 'lucide-react'
 
