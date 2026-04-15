@@ -1,7 +1,7 @@
 /**
  * App.jsx — Classroom Phone Detection System
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Play, Square, BookOpen, Moon } from 'lucide-react'
 
 import CameraView   from './component/CameraView'
@@ -13,6 +13,7 @@ import { useDetection } from './hooks/useDetection'
 
 import DrowsinessPanel from './component/DrowsinessPanel'
 import { useDrowsiness } from './hooks/useDrowsiness'
+import { useAlertSound } from './hooks/useAlertSound'
 
 // ════════════════════════════════════════════════
 // Sub-app: Classroom Phone Detection
@@ -27,6 +28,26 @@ function ClassroomDetectionApp() {
         confidence, setConfidence,
         startCamera, stopCamera,
     } = useDetection()
+
+    const { playPhoneAlert } = useAlertSound()
+
+    // ── Phát tiếng bíp mỗi khi phoneAlert bật lên (cạnh tăng) ──
+    const prevPhoneAlertRef = useRef(false)
+    useEffect(() => {
+        if (phoneAlert && !prevPhoneAlertRef.current) {
+            playPhoneAlert()
+        }
+        prevPhoneAlertRef.current = phoneAlert
+    }, [phoneAlert, playPhoneAlert])
+
+    // Phát lại tiếng bíp định kỳ khi cảnh báo vẫn còn (mỗi 3 giây)
+    useEffect(() => {
+        if (!phoneAlert) return
+        const interval = setInterval(() => {
+            playPhoneAlert()
+        }, 3000)
+        return () => clearInterval(interval)
+    }, [phoneAlert, playPhoneAlert])
 
     const phoneCnt  = counts['cell phone'] || 0
     const personCnt = counts['person'] || 0
@@ -73,7 +94,7 @@ function ClassroomDetectionApp() {
                 {/* Stats sidebar */}
                 <aside className="w-72 shrink-0 flex flex-col">
                     <p className="text-xs font-mono font-bold mb-3" style={{color:'#3d7ab5'}}>
-                        📊 GIÁM SÁT LỚP HỌC
+                        GIÁM SÁT LỚP HỌC
                     </p>
                     <div className="flex-1 overflow-y-auto">
                         <StatsPanel
@@ -94,7 +115,7 @@ function ClassroomDetectionApp() {
 }
 
 // ════════════════════════════════════════════════
-// Sub-app: Drowsiness Detection (unchanged logic)
+// Sub-app: Drowsiness Detection
 // ════════════════════════════════════════════════
 function DrowsinessApp() {
     const {
@@ -104,7 +125,30 @@ function DrowsinessApp() {
         startCamera, stopCamera,
     } = useDrowsiness()
 
+    const { playDrowsyWarning, playDrowsyDanger } = useAlertSound()
+
     const level = drowsyData.drowsy_level
+    const prevLevelRef = useRef(0)
+
+    // ── Phát âm thanh khi mức độ buồn ngủ tăng lên ──
+    useEffect(() => {
+        const prev = prevLevelRef.current
+        if (level === 1 && prev < 1) {
+            playDrowsyWarning()
+        } else if (level === 2 && prev < 2) {
+            playDrowsyDanger()
+        }
+        prevLevelRef.current = level
+    }, [level, playDrowsyWarning, playDrowsyDanger])
+
+    // ── Phát lại định kỳ khi vẫn trong trạng thái nguy hiểm ──
+    useEffect(() => {
+        if (level === 0) return
+        const ms       = level >= 2 ? 2500 : 5000   // Nguy hiểm → bíp thường xuyên hơn
+        const playFn   = level >= 2 ? playDrowsyDanger : playDrowsyWarning
+        const interval = setInterval(playFn, ms)
+        return () => clearInterval(interval)
+    }, [level, playDrowsyWarning, playDrowsyDanger])
 
     return (
         <>
@@ -232,11 +276,6 @@ export default function App() {
                         <div className="text-xs font-mono" style={{color:'#2a5a80'}}>NGÀY</div>
                         <div className="text-xs font-mono" style={{color:'#c8dff0'}}>{dateStr}</div>
                     </div>
-                    {/* <div className="w-px h-8" style={{background:'#0d2544'}} />
-                    <div className="text-center">
-                        <div className="text-xs font-mono" style={{color:'#2a5a80'}}>MODEL</div>
-                        <div className="text-xs font-mono" style={{color:'#c8dff0'}}>YOLOv8n · MediaPipe</div>
-                    </div> */}
                 </div>
 
                 {/* Mode switcher */}
@@ -246,13 +285,13 @@ export default function App() {
                         <ModeBtn
                             active={mode === 'detection'}
                             onClick={() => setMode('detection')}
-                            icon="📱"
+                            // icon="📱"
                             label="Điện thoại" />
-                        <ModeBtn
+                        {/* <ModeBtn
                             active={mode === 'drowsiness'}
                             onClick={() => setMode('drowsiness')}
                             icon={<Moon size={13}/>}
-                            label="Buồn ngủ" />
+                            label="Buồn ngủ" /> */}
                     </div>
                 </div>
             </header>
@@ -263,13 +302,6 @@ export default function App() {
                     ? <ClassroomDetectionApp />
                     : <DrowsinessApp />}
             </div>
-
-            {/* ══ FOOTER ══ */}
-            {/* <footer className="shrink-0 border-t px-5 py-2 flex items-center justify-between text-xs font-mono"
-                style={{borderColor:'#0d2544', color:'#1e3a5f', background:'#04101f'}}>
-                <span>YOLOv8n · MediaPipe Face Mesh · FastAPI · React + Vite</span>
-                <span style={{color:'#2a5a80'}}>SmartClass Monitor v2.0</span>
-            </footer> */}
         </div>
     )
 }

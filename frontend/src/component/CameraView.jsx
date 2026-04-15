@@ -1,6 +1,3 @@
-/**
- * CameraView — Component hiển thị video + canvas overlay
- */
 import React, { useEffect } from 'react'
 
 export default function CameraView({ videoRef, canvasRef, isRunning, phoneAlert }) {

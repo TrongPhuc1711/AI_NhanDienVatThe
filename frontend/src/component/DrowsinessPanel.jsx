@@ -1,6 +1,4 @@
-/**
- * DrowsinessPanel — Hiển thị thống kê phát hiện buồn ngủ
- */
+
 import React from 'react'
 import { Eye, EyeOff, AlertTriangle, Activity, Wifi, WifiOff } from 'lucide-react'
 
